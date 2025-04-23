@@ -1,4 +1,4 @@
-create function public.after_auth_user_created_function()
+create function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
@@ -7,16 +7,29 @@ as $$
 begin
   if new.raw_app_meta_data is not null then
     if new.raw_app_meta_data ? 'provider' and new.raw_app_meta_data->>'provider' = 'email' then
-      insert into public.profiles (profile_id, name, username)
-      values (new.id, 'name', substr(md5(random()::text), 1, 8));
+      if new.raw_user_meta_data ? 'name' and new.raw_user_meta_data ? 'username' then
+        insert into public.profiles (profile_id, name, username, role)
+        values (new.id, new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'username' ,'developer');
+      else
+        insert into public.profiles (profile_id, name, username, role)
+        values (new.id, '익명', substr(md5(random()::text, 1, 8)) ,'developer');
+      end if;
+    end if;
 
-      -- Later, add a social login conditional.
+    if new.raw_app_meta_data ? 'provider' and new.raw_app_meta_data->>'provider' = 'kakao' then
+      insert into public.profiles (profile_id, name, username, bio, avatar)
+      values (new.id, new.raw_user_meta_data->>'name', new.raw_user_meta_data->>'preferred_username' || '_' || substr(md5(random()::text, 1, 4)), 'developer', new.raw_user_meta_data->>'avatar_url');
+    end if;
+
+    if new.raw_app_meta_data ? 'provider' and new.raw_app_meta_data->>'provider' = 'github' then
+      insert into public.profiles (profile_id, name, username, bio, avatar)
+      values (new.id, new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'user_name' || '_' || substr(md5(random()::text, 1, 4)), 'developer', new.raw_user_meta_data->>'avatar_url');
     end if;
   end if;
   return new;
 end;
 $$;
 
-create trigger after_auth_user_created_trigger
+create trigger user_to_profile_trigger
 after insert on auth.users
-for each row execute function public.after_auth_user_created_function();
+for each row execute function public.handle_new_user();
